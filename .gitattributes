@@ -1,0 +1,8 @@
+.gitignore         export-ignore
+.gitattributes     export-ignore
+.github            export-ignore
+.editorconfig      export-ignore
+.pylintrc          export-ignore
+tox.ini            export-ignore
+check_vcenter.png  export-ignore
+README.md          export-ignore
