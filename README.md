@@ -22,6 +22,7 @@
 
 ```
 usage: check_vcenter.py [-h] -m {vms,hosts,datastores} -u USER -p PW --url BASEURL [-t TIMEOUT] [--cacert CACERT] [--debug]
+                        [--diskwarn DISKWARN] [--diskcrit DISKCRIT]
 
 Icinga/Nagios that checks a VMware vCenter via the vSphere Automation API
 
@@ -36,6 +37,10 @@ optional arguments:
                         API timeout in seconds
   --cacert CACERT       Path to CA certificate file
   --debug               Print debug information
+
+Mode-specific parameters:
+  --diskwarn DISKWARN   Warning threshold for datastore usage (in %)
+  --diskcrit DISKCRIT   Critical threshold for datastore usage (in %)
 ```
 
 ```bash

@@ -140,7 +140,27 @@ def get_args():
     parser.add_argument('--debug', dest='debug', action='store_true',
                         help="Print debug information",
                         default=False)
+    modeargs = parser.add_argument_group('Mode-specific parameters')
+    modeargs.add_argument("--diskwarn", required=False, default=None,
+                          help="Warning threshold for datastore usage (in %%)",
+                          type=float, dest='diskwarn')
+    modeargs.add_argument("--diskcrit", required=False, default=None,
+                          help="Critical threshold for datastore usage (in %%)",
+                          type=float, dest='diskcrit')
     args = parser.parse_args()
+
+    # Validate  arguments
+    if args.diskwarn is not None and args.mode not in ['datastores']:
+        exit_plugin(3, '--diskwarn only works in the following modes: datastores', '')
+
+    if args.diskcrit is not None and args.mode not in ['datastores']:
+        exit_plugin(3, '--diskcrit only works in the following modes: datastores', '')
+
+    if (args.diskcrit is not None
+            and args.diskwarn is not None
+            and args.diskwarn > args.diskcrit):
+        exit_plugin(3, '--diskcrit must be higher than --diskwarn', '')
+
     return args
 
 
@@ -295,7 +315,7 @@ def check_hosts(session: VCenterAPISession):
     exit_plugin(state, output, perfdata)
 
 
-def check_datastores(session: VCenterAPISession):
+def check_datastores(session: VCenterAPISession, diskwarn: float = None, diskcrit: float = None):
     """ Check datastores in vCenter """
 
     # Query API endpoint
@@ -320,12 +340,17 @@ def check_datastores(session: VCenterAPISession):
         used_bytes = element['capacity'] - element['free_space']
         used_pct = round((used_bytes / element['capacity']) * 100, 2)
 
-        if used_pct >= 97:
-            # Datastore is used more than 97%, exit WARNING and add to output
-            state = set_state(1, state)
-            output += f', { element["name"] }: { used_pct }%'
+        if diskcrit is not None and used_pct >= diskcrit:
+            # Datastore usage above critical threshold
+            state = set_state(2, state)
+            output += f', Crit: { element["name"] }: { used_pct }%'
 
-        perfdata += f'\'{ element["name"] }\'={ used_pct }%;;;0;100 '
+        elif diskwarn is not None and used_pct >= diskwarn:
+            # Datastore usage above warning threshold
+            state = set_state(1, state)
+            output += f', Warn: { element["name"] }: { used_pct }%'
+
+        perfdata += f'\'{ element["name"] }\'={ used_pct }%;{diskwarn or ""};{diskcrit or ""};0;100 '
 
     # Exit plugin
     exit_plugin(state, output, perfdata)
@@ -348,7 +373,7 @@ def main():
         check_hosts(session)
     elif args.mode == 'datastores':
         # Check state of esx hosts in vCenter
-        check_datastores(session)
+        check_datastores(session, args.diskwarn, args.diskcrit)
 
 
 if __name__ == "__main__":
