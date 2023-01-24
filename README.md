@@ -21,14 +21,15 @@
 * Use the plugin
 
 ```
-usage: check_vcenter.py [-h] -m {vms,hosts,datastores} -u USER -p PW --url BASEURL [-t TIMEOUT] [--cacert CACERT] [--debug]
+usage: check_vcenter.py [-h] -m {vms,hosts,datastores,datastore} -u USER -p PW --url BASEURL
+                        [-t TIMEOUT] [--cacert CACERT] [--debug] [--datastore DATASTORE]
                         [--diskwarn DISKWARN] [--diskcrit DISKCRIT]
 
 Icinga/Nagios that checks a VMware vCenter via the vSphere Automation API
 
 optional arguments:
   -h, --help            show this help message and exit
-  -m {vms,hosts,datastores}, --mode {vms,hosts,datastores}
+  -m {vms,hosts,datastores,datastore}, --mode {vms,hosts,datastores,datastore}
                         Query mode
   -u USER, --user USER  Username for vCenter
   -p PW, --pass PW      Password for vCenter
@@ -39,6 +40,8 @@ optional arguments:
   --debug               Print debug information
 
 Mode-specific parameters:
+  --datastore DATASTORE
+                        Name of datastore to check (only with "--mode datastore")
   --diskwarn DISKWARN   Warning threshold for datastore usage (in %)
   --diskcrit DISKCRIT   Critical threshold for datastore usage (in %)
 ```
@@ -53,7 +56,7 @@ Mode-specific parameters:
 
 #### Options
 
-* `-m` / `--mode` : Plugin mode (one of `vms`,`hosts` or `datastores`)
+* `-m` / `--mode` : Plugin mode (one of `vms`,`hosts`,`datastores` or `datastore`)
 * `--cacert` : cacert file used to validate the vCenter TLS Certificate, defaults to `/etc/ssl/certs/ca-bundle.crt` 
   * If you run your vCenter with a selfsigned VMCA cert (which you shouldn't 😉) create a .pem file with the public key of your selfsigned VMCA and add the parameter `--cacert` pointing to that file (`--cacert ./my_VMCA_cert.pem`)
 

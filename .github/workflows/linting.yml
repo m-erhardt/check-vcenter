@@ -16,12 +16,6 @@ on:
       - '.gitattributes'
       - 'README.md'
   workflow_dispatch:
-    paths-ignore:
-      - 'docs/**'
-      - '.github/**'
-      - '.editorconfig'
-      - '.gitattributes'
-      - 'README.md'
 
 jobs:
   test:

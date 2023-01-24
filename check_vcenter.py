@@ -15,6 +15,7 @@
 import sys
 import json
 from argparse import ArgumentParser, Namespace as Arguments
+from urllib.parse import quote_plus
 from requests import request, ConnectTimeout
 from urllib3.exceptions import NewConnectionError, MaxRetryError
 
@@ -116,10 +117,11 @@ def get_args():
     parser = ArgumentParser(
                  description="Icinga/Nagios that checks a VMware vCenter via the \
                               vSphere Automation API")
+
     parser.add_argument("-m", "--mode", required=True,
                         help="Query mode",
                         type=str, dest='mode',
-                        choices=["vms", "hosts", "datastores"],
+                        choices=["vms", "hosts", "datastores", "datastore"],
                         default="vms")
     parser.add_argument("-u", "--user", required=True,
                         help="Username for vCenter",
@@ -140,7 +142,11 @@ def get_args():
     parser.add_argument('--debug', dest='debug', action='store_true',
                         help="Print debug information",
                         default=False)
+
     modeargs = parser.add_argument_group('Mode-specific parameters')
+    modeargs.add_argument("--datastore", required=False, default=None,
+                          help="Name of datastore to check (only with \"--mode datastore\")",
+                          type=str, dest='datastore')
     modeargs.add_argument("--diskwarn", required=False, default=None,
                           help="Warning threshold for datastore usage (in %%)",
                           type=float, dest='diskwarn')
@@ -150,11 +156,14 @@ def get_args():
     args = parser.parse_args()
 
     # Validate  arguments
-    if args.diskwarn is not None and args.mode not in ['datastores']:
-        exit_plugin(3, '--diskwarn only works in the following modes: datastores', '')
+    if args.datastore is not None and args.mode != 'datastore':
+        exit_plugin(3, '--datastore only works with --mode datastore', '')
 
-    if args.diskcrit is not None and args.mode not in ['datastores']:
-        exit_plugin(3, '--diskcrit only works in the following modes: datastores', '')
+    if args.diskwarn is not None and args.mode not in ['datastores', 'datastore']:
+        exit_plugin(3, '--diskwarn only works in the following modes: datastores, datastore', '')
+
+    if args.diskcrit is not None and args.mode not in ['datastores', 'datastore']:
+        exit_plugin(3, '--diskcrit only works in the following modes: datastores, datastore', '')
 
     if (args.diskcrit is not None
             and args.diskwarn is not None
@@ -193,6 +202,21 @@ def set_state(newstate: int, state: int):
         returnstate = 0
 
     return returnstate
+
+
+def convert_bytes_to_pretty(raw_bytes: int):
+    """ converts raw bytes into human readable output """
+    if raw_bytes >= 1099511627776:
+        output = f'{ round(raw_bytes / 1024 **4, 2) }TiB'
+    elif raw_bytes >= 1073741824:
+        output = f'{ round(raw_bytes / 1024 **3, 2) }GiB'
+    elif raw_bytes >= 1048576:
+        output = f'{ round(raw_bytes / 1024 **2, 2) }MiB'
+    elif raw_bytes >= 1024:
+        output = f'{ round(raw_bytes / 1024, 2) }KiB'
+    elif raw_bytes < 1024:
+        output = f'{ raw_bytes }B'
+    return output
 
 
 def check_vms(session: VCenterAPISession):
@@ -316,7 +340,7 @@ def check_hosts(session: VCenterAPISession):
 
 
 def check_datastores(session: VCenterAPISession, diskwarn: float = None, diskcrit: float = None):
-    """ Check datastores in vCenter """
+    """ Check all datastores in vCenter """
 
     # Query API endpoint
     data = session.query_api_endpoint('GET', '/api/vcenter/datastore')
@@ -356,6 +380,52 @@ def check_datastores(session: VCenterAPISession, diskwarn: float = None, diskcri
     exit_plugin(state, output, perfdata)
 
 
+def check_datastore(session: VCenterAPISession, datastore: str,
+                    diskwarn: float = None, diskcrit: float = None):
+    """ Check single datastore in vCenter """
+
+    # Query API endpoint
+    data = session.query_api_endpoint('GET', f'/api/vcenter/datastore?names={ quote_plus(datastore) }')
+
+    # Print full API response in debug mode
+    if session.debug is True:
+        print(json.dumps(data, indent=4))
+
+    # Invalidate session token
+    session.destroy()
+
+    # Check if more or less than one result was found for --datastore
+    if len(data) > 1:
+        exit_plugin(3, f'{ len(data) } matched the search for { datastore }', '')
+
+    elif len(data) == 0:
+        exit_plugin(3, f'No datastore matched the search for "{ datastore }"', '')
+
+    # Calculate usage
+    used_bytes = data[0]['capacity'] - data[0]['free_space']
+    used_pct = round((used_bytes / data[0]['capacity']) * 100, 2)
+
+    # Construct output string
+    output = (f'Datastore "{ datastore }": { convert_bytes_to_pretty(used_bytes) } '
+              f'of { convert_bytes_to_pretty(data[0]["capacity"]) } used '
+              f'({ used_pct }%)')
+
+    # Construct perfdata string
+    perfdata = f' | \'{ data[0]["name"] }\'={ used_pct }%;{diskwarn or ""};{diskcrit or ""};0;100'
+
+    # Evaluate thresholds
+    if diskcrit is not None and used_pct >= diskcrit:
+        # Datastore usage above critical threshold
+        exit_plugin(2, output, perfdata)
+
+    elif diskwarn is not None and used_pct >= diskwarn:
+        # Datastore usage above warning threshold
+        exit_plugin(1, output, perfdata)
+
+    else:
+        exit_plugin(0, output, perfdata)
+
+
 def main():
     """ Main program code """
 
@@ -372,8 +442,11 @@ def main():
         # Check state of esx hosts in vCenter
         check_hosts(session)
     elif args.mode == 'datastores':
-        # Check state of esx hosts in vCenter
+        # Check state of all datastores in vCenter
         check_datastores(session, args.diskwarn, args.diskcrit)
+    elif args.mode == 'datastore':
+        # Check state of single datastore in vCenter
+        check_datastore(session, args.datastore, args.diskwarn, args.diskcrit)
 
 
 if __name__ == "__main__":
